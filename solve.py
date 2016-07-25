@@ -19,18 +19,22 @@ ops = [
 numops = [len(numbers) - 1]
 
 tree = []
-haveExpression = {}
 valueFrequency = {}
+expressionValue = {}
 
 def parseTree(i):
 	node = tree[i]
 	if isinstance(node, int):
-		return node, node, i + 1
+		return str(node), node, i + 1
 
 	expr1, value1, j = parseTree(i + 1)
 	expr2, value2, j = parseTree(j)
 
 	value = None if value1 is None or value2 is None else node.fn(value1, value2)
+
+	if node.isCommutative and expr2 < expr1:
+		expr1, expr2 = expr2, expr1
+
 	expression = '({} {} {})'.format(expr1, node.symbol, expr2)
 
 	return expression, value, j
@@ -45,9 +49,14 @@ def printExpressionAndValue():
 		if value == int(value):
 			value = int(value)
 
-	print expression, '=', value
+	if expression in expressionValue:
+		assert value == expressionValue[expression]
+	else:
+		expressionValue[expression] = value
 
-	valueFrequency[value] = valueFrequency.get(value, 0) + 1
+		print expression, '=', value
+
+		valueFrequency[value] = valueFrequency.get(value, 0) + 1
 
 def solve():
 	n = numops.pop()

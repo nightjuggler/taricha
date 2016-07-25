@@ -3,44 +3,51 @@
 numbers = [1, 3, 4, 6]
 
 class Operator(object):
-	def __init__(self, symbol, fn):
+	def __init__(self, symbol, isAssociative, isCommutative, fn):
 		self.symbol = symbol
+		self.isAssociative = isAssociative
+		self.isCommutative = isCommutative
 		self.fn = fn
 
 ops = [
-	Operator('+', lambda a, b: a + b),
-	Operator('-', lambda a, b: a - b),
-	Operator('*', lambda a, b: a * b),
-	Operator('/', lambda a, b: None if b == 0 else float(a) / float(b)),
+	Operator('+', True,  True,  lambda a, b: a + b),
+	Operator('-', False, False, lambda a, b: a - b),
+	Operator('*', True,  True,  lambda a, b: a * b),
+	Operator('/', False, False, lambda a, b: None if b == 0 else float(a) / float(b)),
 ]
 
-resultHash = {}
 numops = [len(numbers) - 1]
+
 tree = []
+haveExpression = {}
+valueFrequency = {}
 
 def parseTree(i):
-	v = tree[i]
-	if isinstance(v, int):
-		return v, v, i + 1
+	node = tree[i]
+	if isinstance(node, int):
+		return node, node, i + 1
 
-	t1, n1, j = parseTree(i + 1)
-	t2, n2, j = parseTree(j)
-	n = None if n1 is None or n2 is None else v.fn(n1, n2)
-	t = '({} {} {})'.format(t1, v.symbol, t2)
+	expr1, value1, j = parseTree(i + 1)
+	expr2, value2, j = parseTree(j)
 
-	return t, n, j
+	value = None if value1 is None or value2 is None else node.fn(value1, value2)
+	expression = '({} {} {})'.format(expr1, node.symbol, expr2)
 
-def printResult():
-	t, n, j = parseTree(0)
+	return expression, value, j
 
-	if n is not None:
-		n = round(n, 10)
-		if n == int(n):
-			n = int(n)
+def printExpressionAndValue():
+	expression, value, nextIndex = parseTree(0)
 
-	print t, '=', n
+	assert nextIndex == len(tree)
 
-	resultHash[n] = resultHash.get(n, 0) + 1
+	if value is not None:
+		value = round(value, 10)
+		if value == int(value):
+			value = int(value)
+
+	print expression, '=', value
+
+	valueFrequency[value] = valueFrequency.get(value, 0) + 1
 
 def solve():
 	n = numops.pop()
@@ -51,7 +58,7 @@ def solve():
 			if numops:
 				solve()
 			else:
-				printResult()
+				printExpressionAndValue()
 			tree.pop()
 			numbers.insert(i, x)
 	else:
@@ -69,5 +76,5 @@ def solve():
 if __name__ == '__main__':
 	solve()
 
-	for count, result in sorted([(count, result) for result, count in resultHash.iteritems()]):
-		print '{:4}: {}'.format(count, result)
+	for freq, value in sorted([(freq, value) for value, freq in valueFrequency.iteritems()]):
+		print '{:4}: {}'.format(freq, value)

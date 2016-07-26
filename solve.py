@@ -4,7 +4,7 @@ numbers = [1, 3, 4, 6]
 
 class Operator(object):
 	def __init__(self, symbol, isAssociative, isCommutative, fn):
-		self.symbol = symbol
+		self.symbol = ' {} '.format(symbol)
 		self.isAssociative = isAssociative
 		self.isCommutative = isCommutative
 		self.fn = fn
@@ -25,22 +25,36 @@ expressionValue = {}
 def parseTree(i):
 	node = tree[i]
 	if isinstance(node, int):
-		return str(node), node, i + 1
+		return str(node), node, i + 1, None, None
 
-	expr1, value1, j = parseTree(i + 1)
-	expr2, value2, j = parseTree(j)
+	expr1, value1, j, op1, op1children = parseTree(i + 1)
+	expr2, value2, j, op2, op2children = parseTree(j)
 
 	value = None if value1 is None or value2 is None else node.fn(value1, value2)
 
-	if node.isCommutative and expr2 < expr1:
-		expr1, expr2 = expr2, expr1
+	children = []
+	if node.isAssociative:
+		if op1 == node:
+			children.extend(op1children)
+		else:
+			children.append(expr1)
+		if op2 == node:
+			children.extend(op2children)
+		else:
+			children.append(expr2)
+	else:
+		children.append(expr1)
+		children.append(expr2)
 
-	expression = '({} {} {})'.format(expr1, node.symbol, expr2)
+	if node.isCommutative:
+		children.sort()
 
-	return expression, value, j
+	expression = '({})'.format(node.symbol.join(children))
+
+	return expression, value, j, node, children
 
 def printExpressionAndValue():
-	expression, value, nextIndex = parseTree(0)
+	expression, value, nextIndex, lastOperator, lastOpChildren = parseTree(0)
 
 	assert nextIndex == len(tree)
 

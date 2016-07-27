@@ -111,7 +111,7 @@ if __name__ == '__main__':
 	parser.add_argument('-i', '--int-only', action='store_true',
 		help="Print only expressions and frequencies corresponding to integer values")
 	parser.add_argument('-q', '--freq-value', type=int,
-		help="Print only the values corresponding to the given frequency")
+		help="Print only the values that occur with the given frequency")
 	parser.add_argument('-v', '--expr-value', type=float,
 		help="Print only the expressions evaluating to the given value")
 	parser.add_argument('-z', '--divbyzero', action='store_true',

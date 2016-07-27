@@ -88,8 +88,8 @@
 >
 ```
 
-| Command-line Options |
-|----------------------|
+## Command-line Options
+
 -h | --help        | Show help message and exit
 -a | --associative | Don't discard associative equivalents
 -c | --commutative | Don't discard commutative equivalents

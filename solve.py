@@ -1,7 +1,5 @@
 #!/usr/bin/python
 
-numbers = [1, 3, 4, 6]
-
 class Operator(object):
 	def __init__(self, symbol, isAssociative, isCommutative, fn):
 		self.symbol = ' {} '.format(symbol)
@@ -15,8 +13,6 @@ ops = [
 	Operator('*', True,  True,  lambda a, b: a * b),
 	Operator('/', False, False, lambda a, b: None if b == 0 else float(a) / float(b)),
 ]
-
-numops = [len(numbers) - 1]
 
 tree = []
 valueFrequency = {}
@@ -63,12 +59,20 @@ def printExpressionAndValue():
 		if value == int(value):
 			value = int(value)
 
+	if args.int_only and type(value) is not int:
+		return
+	if args.expr_value is not None and value != args.expr_value:
+		return
+	if args.divbyzero and value is not None:
+		return
+
 	if expression in expressionValue:
 		assert value == expressionValue[expression]
 	else:
 		expressionValue[expression] = value
 
-		print expression, '=', value
+		if not args.freq_only:
+			print expression, '=', value
 
 		valueFrequency[value] = valueFrequency.get(value, 0) + 1
 
@@ -97,7 +101,45 @@ def solve():
 	numops.append(n)
 
 if __name__ == '__main__':
+	import argparse
+	parser = argparse.ArgumentParser()
+	parser.add_argument('integers', metavar='N', type=int, nargs='*', default=[1, 3, 4, 6])
+	parser.add_argument('-a', '--associative', action='store_true', help="Don't discard associative equivalents")
+	parser.add_argument('-c', '--commutative', action='store_true', help="Don't discard commutative equivalents")
+	parser.add_argument('-e', '--expr-only', action='store_true', help="Print only expressions (not frequencies)")
+	parser.add_argument('-f', '--freq-only', action='store_true', help="Print only frequencies (not expressions)")
+	parser.add_argument('-i', '--int-only', action='store_true',
+		help="Print only expressions and frequencies corresponding to integer values")
+	parser.add_argument('-q', '--freq-value', type=int,
+		help="Print only the values corresponding to the given frequency")
+	parser.add_argument('-v', '--expr-value', type=float,
+		help="Print only the expressions evaluating to the given value")
+	parser.add_argument('-z', '--divbyzero', action='store_true',
+		help="Print only the expressions that divide by zero")
+	args = parser.parse_args()
+
+	numbers = args.integers
+	numops = [len(numbers) - 1]
+
+	if args.associative:
+		for op in ops:
+			op.isAssociative = False
+	if args.commutative:
+		for op in ops:
+			op.isCommutative = False
+	if args.freq_value is not None:
+		args.freq_only = True
+	if args.expr_value is not None or args.divbyzero:
+		args.expr_only = True
+
 	solve()
 
-	for freq, value in sorted([(freq, value) for value, freq in valueFrequency.iteritems()]):
-		print '{:4}: {}'.format(freq, value)
+	if not args.expr_only:
+		if args.freq_value is None:
+			frequencies = [(freq, value) for value, freq in valueFrequency.iteritems()]
+		else:
+			frequencies = [(freq, value) for value, freq in valueFrequency.iteritems()
+				if freq == args.freq_value]
+		frequencies.sort()
+		for freq, value in frequencies:
+			print '{:4}: {}'.format(freq, value)

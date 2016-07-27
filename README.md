@@ -90,7 +90,8 @@
 
 ## Command-line Options
 
-| --- | --- | --- |
+| Short | Long | Description |
+|-------|------|-------------|
 -h | --help        | Show help message and exit
 -a | --associative | Don't discard associative equivalents
 -c | --commutative | Don't discard commutative equivalents

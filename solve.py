@@ -7,6 +7,10 @@ class Operator(object):
 		self.isCommutative = isCommutative
 		self.fn = fn
 
+	def setInverse(self, inverseOperator, isPrimary):
+		self.inverseOperator = inverseOperator
+		self.isPrimary = isPrimary
+
 ops = [
 	Operator('+', True,  True,  lambda a, b: a + b),
 	Operator('-', False, False, lambda a, b: a - b),
@@ -14,27 +18,81 @@ ops = [
 	Operator('/', False, False, lambda a, b: None if b == 0 else float(a) / float(b)),
 ]
 
+ops[0].setInverse(ops[1], True)
+ops[1].setInverse(ops[0], False)
+ops[2].setInverse(ops[3], True)
+ops[3].setInverse(ops[2], False)
+
 tree = []
 valueFrequency = {}
 expressionValue = {}
 
-def parseTree(i):
+def parseTree2(i):
+	node = tree[i]
+	if isinstance(node, int):
+		return str(node), node, i + 1, None, None, None
+
+	expr1, value1, j, op1, op1children, inverseChildren1 = parseTree2(i + 1)
+	expr2, value2, j, op2, op2children, inverseChildren2 = parseTree2(j)
+
+	value = None if value1 is None or value2 is None else node.fn(value1, value2)
+
+	children = []
+	inverseChildren = []
+
+	if node.isPrimary:
+		if op1 is node: # (a * b / c / d) * ...
+			children.extend(op1children)
+			inverseChildren.extend(inverseChildren1)
+		else:
+			children.append(expr1)
+
+		if op2 is node: # ... * (a * b / c / d)
+			children.extend(op2children)
+			inverseChildren.extend(inverseChildren2)
+		else:
+			children.append(expr2)
+	else:
+		node = node.inverseOperator
+
+		if op1 is node: # (a * b / c / d) / ...
+			children.extend(op1children)
+			inverseChildren.extend(inverseChildren1)
+		else:
+			children.append(expr1)
+
+		if op2 is node: # ... / (a * b / c / d) => ... * c * d / a / b
+			children.extend(inverseChildren2)
+			inverseChildren.extend(op2children)
+		else:
+			inverseChildren.append(expr2)
+
+	children.sort()
+	expression = node.symbol.join(children)
+	if inverseChildren:
+		inverseChildren.sort()
+		expression = node.inverseOperator.symbol.join([expression] + inverseChildren)
+	expression = '(' + expression + ')'
+
+	return expression, value, j, node, children, inverseChildren
+
+def parseTree1(i):
 	node = tree[i]
 	if isinstance(node, int):
 		return str(node), node, i + 1, None, None
 
-	expr1, value1, j, op1, op1children = parseTree(i + 1)
-	expr2, value2, j, op2, op2children = parseTree(j)
+	expr1, value1, j, op1, op1children = parseTree1(i + 1)
+	expr2, value2, j, op2, op2children = parseTree1(j)
 
 	value = None if value1 is None or value2 is None else node.fn(value1, value2)
 
 	children = []
 	if node.isAssociative:
-		if op1 == node:
+		if op1 is node:
 			children.extend(op1children)
 		else:
 			children.append(expr1)
-		if op2 == node:
+		if op2 is node:
 			children.extend(op2children)
 		else:
 			children.append(expr2)
@@ -50,7 +108,7 @@ def parseTree(i):
 	return expression, value, j, node, children
 
 def printExpressionAndValue():
-	expression, value, nextIndex, lastOperator, lastOpChildren = parseTree(0)
+	expression, value, nextIndex = parseTree(0)[0:3]
 
 	assert nextIndex == len(tree)
 
@@ -110,6 +168,7 @@ if __name__ == '__main__':
 	parser.add_argument('-f', '--freq-only', action='store_true', help="Print only frequencies (not expressions)")
 	parser.add_argument('-i', '--int-only', action='store_true',
 		help="Print only expressions and frequencies corresponding to integer values")
+	parser.add_argument('-n', '--normalize', action='store_true', help="Fully normalize expressions")
 	parser.add_argument('-q', '--freq-value', type=int,
 		help="Print only the values that occur with the given frequency")
 	parser.add_argument('-v', '--expr-value', type=float,
@@ -120,6 +179,7 @@ if __name__ == '__main__':
 
 	numbers = args.integers
 	numops = [len(numbers) - 1]
+	parseTree = parseTree2 if args.normalize else parseTree1
 
 	if args.associative:
 		for op in ops:

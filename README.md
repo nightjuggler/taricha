@@ -98,6 +98,9 @@
 -e | --expr-only   | Print only expressions (not frequencies)
 -f | --freq-only   | Print only frequencies (not expressions)
 -i | --int-only    | Print only expressions and frequencies corresponding to integer values
+-n | --normalize   | Fully normalize expressions
 -q | --freq-value  | Print only the values that occur with the given frequency
 -v | --expr-value  | Print only the expressions evaluating to the given value
 -z | --divbyzero   | Print only the expressions that divide by zero
+
+See also [https://nightjuggler.com/taricha/](https://nightjuggler.com/taricha/)

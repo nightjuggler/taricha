@@ -55,6 +55,9 @@
 (6 / ((1 + 3) - 4)) = None
 (6 / ((4 - 1) - 3)) = None
 (6 / ((4 - 3) - 1)) = None
+> ./solve.py --divbyzero --normalize
+(6 / (1 + 3 - 4)) = None
+(6 / (4 - 1 - 3)) = None
 >
 ```
 

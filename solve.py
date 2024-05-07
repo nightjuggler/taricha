@@ -260,11 +260,11 @@ def main():
 			freqs = [(freq, value) for value, freq in value_freq.items() if freq == freq_value]
 		else:
 			freqs = [(freq, value) for value, freq in value_freq.items()]
-
-		freqs.sort()
-		width = len(str(freqs[-1][0]))
-		for freq, value in freqs:
-			print(f'{freq:{width}}: {value}')
+		if freqs:
+			freqs.sort()
+			width = len(str(freqs[-1][0]))
+			for freq, value in freqs:
+				print(f'{freq:{width}}: {value}')
 
 if __name__ == '__main__':
 	main()

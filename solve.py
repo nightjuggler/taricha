@@ -1,10 +1,4 @@
 import argparse
-import operator
-
-def gcd(a, b):
-	while b:
-		a, b = b, a % b
-	return a
 
 class Fraction(object):
 	#
@@ -30,9 +24,11 @@ class Fraction(object):
 		if denom < 0:
 			num = -num
 			denom = -denom
-		d = gcd(num, denom)
-		self.num = num // d
-		self.denom = denom // d
+		gcd, x = num, denom
+		while x:
+			gcd, x = x, gcd % x
+		self.num = num // gcd
+		self.denom = denom // gcd
 
 	def is_integer(self): return self.denom == 1
 	def is_positive(self): return self.num > 0 and self.denom
@@ -67,15 +63,23 @@ class Fraction(object):
 	def __ge__(self, other): return self.num*other.denom >= other.num*self.denom
 
 class Operator(object):
-	def __init__(self, symbol, is_associative, is_commutative, fn):
+	def __init__(self, symbol, fn, is_primary):
 		self.symbol = f' {symbol} '
-		self.is_associative = is_associative
-		self.is_commutative = is_commutative
-		self.fn = fn
-
-	def set_inverse(self, inverse_op, is_primary):
-		self.inverse_op = inverse_op
+		self.fn = Fraction.__dict__[f'__{fn}__']
 		self.is_primary = is_primary
+		self.is_associative = is_primary
+		self.is_commutative = is_primary
+
+def make_ops(*spec):
+	ops = []
+	for sym1, fn1, sym2, fn2 in spec:
+		op1 = Operator(sym1, fn1, True)
+		op2 = Operator(sym2, fn2, False)
+		op1.inverse_op = op2
+		op2.inverse_op = op1
+		ops.append(op1)
+		ops.append(op2)
+	return ops
 
 def parse_tree2(tree, i):
 	node = tree[i]
@@ -110,7 +114,8 @@ def parse_tree2(tree, i):
 		else:
 			children.append(expr1)
 
-		if op2 is node: # ... / (a * b / c / d) => ... * c * d / a / b
+		# ... / (a * b / c / d) => ... * c * d / a / b
+		if op2 is node and (not node.is_mul or value2.denom):
 			children.extend(inverse_children2)
 			inverse_children.extend(op2children)
 		else:
@@ -187,16 +192,9 @@ def parse_args():
 	return args
 
 def main():
-	ops = [
-		Operator('+', True,  True,  operator.add),
-		Operator('-', False, False, operator.sub),
-		Operator('*', True,  True,  operator.mul),
-		Operator('/', False, False, operator.truediv),
-	]
-	ops[0].set_inverse(ops[1], True)
-	ops[1].set_inverse(ops[0], False)
-	ops[2].set_inverse(ops[3], True)
-	ops[3].set_inverse(ops[2], False)
+	ops = make_ops(('+', 'add', '-', 'sub'), ('*', 'mul', '/', 'truediv'))
+	for op in ops:
+		op.is_mul = op.fn is Fraction.__mul__
 
 	args = parse_args()
 	if args.associative:
@@ -221,7 +219,7 @@ def main():
 		if args.int_only_steps and not all(map(Fraction.is_integer, steps)): return
 		if args.pos_only_steps and not all(map(Fraction.is_positive, steps)): return
 		if expression in expr_value:
-			assert expr_value[expression] == value
+			assert expr_value[expression] == value, f'{expression} = {expr_value[expression]} != {value}'
 			return
 		expr_value[expression] = value
 		if not args.freq_only:

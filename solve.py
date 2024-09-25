@@ -1,66 +1,8 @@
 import argparse
-
-class Fraction(object):
-	#
-	# Note that, by design, any Fraction with denominator 0 will compare equal to any other
-	# Fraction with denominator 0 and greater than any Fraction with a non-zero denominator.
-	# The two instance attributes "num" and "denom" should only ever be set by the constructor
-	# so that "denom" is never negative, and if "denom" is 0, "num" is 1.
-	#
-	def __init__(self, num=0, denom=1):
-		if isinstance(num, str):
-			num, *rest = num.split('/')
-			num = int(num)
-			if rest:
-				if len(rest) > 1:
-					raise ValueError('Not a valid fraction!')
-				denom = int(rest[0])
-		if not isinstance(num, int) or not isinstance(denom, int):
-			raise ValueError('Not a valid fraction!')
-		if not denom:
-			self.num = 1
-			self.denom = 0
-			return
-		if denom < 0:
-			num = -num
-			denom = -denom
-		gcd, x = num, denom
-		while x:
-			gcd, x = x, gcd % x
-		self.num = num // gcd
-		self.denom = denom // gcd
-
-	def is_integer(self): return self.denom == 1
-	def is_positive(self): return self.num > 0 and self.denom
-
-	def __hash__(self):
-		return hash((self.num, self.denom))
-
-	def __bool__(self):
-		return self.num != 0
-
-	def __repr__(self):
-		if self.denom == 1:
-			return str(self.num)
-		if not self.denom:
-			return 'None'
-		return f'{self.num}/{self.denom}'
-
-	def __add__(self, other):
-		return Fraction(self.num*other.denom + other.num*self.denom, self.denom*other.denom)
-	def __sub__(self, other):
-		return Fraction(self.num*other.denom - other.num*self.denom, self.denom*other.denom)
-	def __mul__(self, other):
-		return Fraction(self.num*other.num, self.denom*other.denom)
-	def __truediv__(self, other):
-		return Fraction(self.num*other.denom, self.denom*other.num) if other.denom else Fraction(1, 0)
-
-	def __lt__(self, other): return self.num*other.denom < other.num*self.denom
-	def __le__(self, other): return self.num*other.denom <= other.num*self.denom
-	def __eq__(self, other): return self.denom == other.denom and self.num == other.num
-	def __ne__(self, other): return self.denom != other.denom or self.num != other.num
-	def __gt__(self, other): return self.num*other.denom > other.num*self.denom
-	def __ge__(self, other): return self.num*other.denom >= other.num*self.denom
+from collections import Counter, defaultdict
+import os
+import sys
+from fraction import Fraction
 
 class Operator(object):
 	def __init__(self, symbol, fn, is_primary):
@@ -81,83 +23,121 @@ def make_ops(*spec):
 		ops.append(op2)
 	return ops
 
-def parse_tree2(tree, i):
-	node = tree[i]
-	if isinstance(node, Fraction):
-		return str(node), node, (), i + 1, None, None, None
+def get_ops(args):
+	ops = make_ops(('+', 'add', '-', 'sub'), ('*', 'mul', '/', 'truediv'))
+	if args.normalize:
+		for op in ops:
+			op.is_mul = op.fn is Fraction.__mul__
+	if args.associative:
+		for op in ops:
+			op.is_associative = False
+	if args.commutative:
+		for op in ops:
+			op.is_commutative = False
+	return ops
 
-	expr1, value1, steps1, j, op1, op1children, inverse_children1 = parse_tree2(tree, i + 1)
-	expr2, value2, steps2, j, op2, op2children, inverse_children2 = parse_tree2(tree, j)
-	value = node.fn(value1, value2)
+class Node(object):
+	ID = 0
+	def __init__(self, value, int_steps, pos_steps):
+		Node.ID += 1
+		self.id = Node.ID
+		self.value = value
+		self.int_steps = value.is_integer() and int_steps
+		self.pos_steps = value.is_positive() and pos_steps
 
+	def __hash__(self): return hash(self.expr)
+	def __repr__(self): return self.expr
+
+	def __eq__(self, other):
+		if self.expr == other.expr:
+			assert self.value == other.value, f'{self.expr} = {self.value} != {other.value}'
+			return True
+		return False
+
+def leaf(value):
+	node = Node(value, True, True)
+	node.op = None
+	node.expr = str(value)
+	node.children = None
+	return node
+
+def get_combine(normalize):
+	def combine(op, v1, v2):
+		node = Node(op.fn(v1.value, v2.value),
+			v1.int_steps and v2.int_steps,
+			v1.pos_steps and v2.pos_steps)
+		normalize(node, op, v1, v2)
+		return node
+	return combine
+
+def normalize1(node, op, v1, v2):
+	children = []
+	if op.is_associative:
+		if v1.op is op:
+			children.extend(v1.children)
+		else:
+			children.append(v1)
+		if v2.op is op:
+			children.extend(v2.children)
+		else:
+			children.append(v2)
+	else:
+		children.append(v1)
+		children.append(v2)
+
+	if op.is_commutative:
+		children.sort(key=lambda v: v.id)
+
+	expr = op.symbol.join(v.expr for v in children)
+	node.op = op
+	node.expr = f'({expr})'
+	node.children = children
+
+def normalize2(node, op, v1, v2):
 	children = []
 	inverse_children = []
 
-	if node.is_primary:
-		if op1 is node: # (a * b / c / d) * ...
-			children.extend(op1children)
-			inverse_children.extend(inverse_children1)
+	if op.is_primary:
+		if v1.op is op: # (a * b / c / d) * ...
+			ab, cd = v1.children
+			children.extend(ab)
+			inverse_children.extend(cd)
 		else:
-			children.append(expr1)
+			children.append(v1)
 
-		if op2 is node: # ... * (a * b / c / d)
-			children.extend(op2children)
-			inverse_children.extend(inverse_children2)
+		if v2.op is op: # ... * (a * b / c / d)
+			ab, cd = v2.children
+			children.extend(ab)
+			inverse_children.extend(cd)
 		else:
-			children.append(expr2)
+			children.append(v2)
 	else:
-		node = node.inverse_op
+		op = op.inverse_op
 
-		if op1 is node: # (a * b / c / d) / ...
-			children.extend(op1children)
-			inverse_children.extend(inverse_children1)
+		if v1.op is op: # (a * b / c / d) / ...
+			ab, cd = v1.children
+			children.extend(ab)
+			inverse_children.extend(cd)
 		else:
-			children.append(expr1)
+			children.append(v1)
 
 		# ... / (a * b / c / d) => ... * c * d / a / b
-		if op2 is node and (not node.is_mul or value2.denom):
-			children.extend(inverse_children2)
-			inverse_children.extend(op2children)
+		if v2.op is op and (not op.is_mul or v2.value.denom):
+			ab, cd = v2.children
+			children.extend(cd)
+			inverse_children.extend(ab)
 		else:
-			inverse_children.append(expr2)
+			inverse_children.append(v2)
 
-	children.sort()
-	expression = node.symbol.join(children)
+	children.sort(key=lambda v: v.id)
+	expr = op.symbol.join(v.expr for v in children)
 	if inverse_children:
-		inverse_children.sort()
-		expression = node.inverse_op.symbol.join([expression, *inverse_children])
+		inverse_children.sort(key=lambda v: v.id)
+		expr = op.inverse_op.symbol.join([expr, *(v.expr for v in inverse_children)])
 
-	return f'({expression})', value, (*steps1, *steps2, value), j, node, children, inverse_children
-
-def parse_tree1(tree, i):
-	node = tree[i]
-	if isinstance(node, Fraction):
-		return str(node), node, (), i + 1, None, None
-
-	expr1, value1, steps1, j, op1, op1children = parse_tree1(tree, i + 1)
-	expr2, value2, steps2, j, op2, op2children = parse_tree1(tree, j)
-	value = node.fn(value1, value2)
-
-	children = []
-	if node.is_associative:
-		if op1 is node:
-			children.extend(op1children)
-		else:
-			children.append(expr1)
-		if op2 is node:
-			children.extend(op2children)
-		else:
-			children.append(expr2)
-	else:
-		children.append(expr1)
-		children.append(expr2)
-
-	if node.is_commutative:
-		children.sort()
-
-	expression = node.symbol.join(children)
-
-	return f'({expression})', value, (*steps1, *steps2, value), j, node, children
+	node.op = op
+	node.expr = f'({expr})'
+	node.children = children, inverse_children
 
 def parse_args():
 	parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -191,78 +171,58 @@ def parse_args():
 		args.expr_only = True
 	return args
 
+def get_filter(args):
+	filters = []
+	if args.expr_value is not None:
+		expr_value = args.expr_value
+		filters.append(lambda node: node.value == expr_value)
+
+	if args.int_only: filters.append(lambda node: node.value.is_integer())
+	if args.pos_only: filters.append(lambda node: node.value.is_positive())
+
+	if args.int_only_steps: filters.append(lambda node: node.int_steps)
+	if args.pos_only_steps: filters.append(lambda node: node.pos_steps)
+
+	return lambda node: all(f(node) for f in filters)
+
+def get_nodes(nums, ops, combine):
+	def sortkey(node): return node.id
+	nodes = [[(frozenset([n]), [leaf(Fraction(n))]) for n in nums]]
+	for n in range(1, len(nodes[0])):
+		m = defaultdict(set)
+		for i in range(n):
+			for nums1, vals1 in nodes[i]:
+				for nums2, vals2 in nodes[n-i-1]:
+					if nums1.isdisjoint(nums2): # not nums1 & nums2
+						m[nums1 | nums2].update([combine(op, v1, v2)
+							for op in ops for v1 in vals1 for v2 in vals2])
+		nodes.append([(nums, sorted(vals, key=sortkey)) for nums, vals in m.items()])
+	return nodes[-1][0][1]
+
+def print_expr(nodes):
+	for node in nodes:
+		print(node.expr, '=', node.value)
+
+def print_freq(nodes, freq_value):
+	freqs = sorted((freq, value) for value, freq in Counter(node.value for node in nodes).items()
+		if not freq_value or freq == freq_value)
+	if freqs:
+		width = len(str(freqs[-1][0]))
+		for freq, value in freqs:
+			print(f'{freq:{width}}: {value}')
+
 def main():
-	ops = make_ops(('+', 'add', '-', 'sub'), ('*', 'mul', '/', 'truediv'))
-	for op in ops:
-		op.is_mul = op.fn is Fraction.__mul__
-
 	args = parse_args()
-	if args.associative:
-		for op in ops:
-			op.is_associative = False
-	if args.commutative:
-		for op in ops:
-			op.is_commutative = False
-
-	value_freq = {}
-	expr_value = {}
-	numbers = list(map(Fraction, args.NUMBERS))
-	num_ops = [len(numbers) - 1]
-	parse_tree = parse_tree2 if args.normalize else parse_tree1
-
-	def print_expression(tree):
-		expression, value, steps, next_index = parse_tree(tree, 0)[:4]
-		assert next_index == len(tree)
-		if args.expr_value is not None and value != args.expr_value: return
-		if args.int_only and not value.is_integer(): return
-		if args.pos_only and not value.is_positive(): return
-		if args.int_only_steps and not all(map(Fraction.is_integer, steps)): return
-		if args.pos_only_steps and not all(map(Fraction.is_positive, steps)): return
-		if expression in expr_value:
-			assert expr_value[expression] == value, f'{expression} = {expr_value[expression]} != {value}'
-			return
-		expr_value[expression] = value
-		if not args.freq_only:
-			print(expression, '=', value)
-		value_freq[value] = value_freq.get(value, 0) + 1
-
-	def solve(tree):
-		n = num_ops.pop()
-		if n == 0:
-			for i in range(len(numbers)):
-				x = numbers.pop(i)
-				tree.append(x)
-				if num_ops:
-					solve(tree)
-				else:
-					print_expression(tree)
-				tree.pop()
-				numbers.insert(i, x)
-		else:
-			for op in ops:
-				tree.append(op)
-				for i in range(n):
-					num_ops.append(n - i - 1)
-					num_ops.append(i)
-					solve(tree)
-					num_ops.pop()
-					num_ops.pop()
-				tree.pop()
-		num_ops.append(n)
-
-	solve([])
-
-	if not args.expr_only:
-		if args.freq_value:
-			freq_value = args.freq_value
-			freqs = [(freq, value) for value, freq in value_freq.items() if freq == freq_value]
-		else:
-			freqs = [(freq, value) for value, freq in value_freq.items()]
-		if freqs:
-			freqs.sort()
-			width = len(str(freqs[-1][0]))
-			for freq, value in freqs:
-				print(f'{freq:{width}}: {value}')
+	nodes = list(filter(get_filter(args), get_nodes(args.NUMBERS, get_ops(args),
+		get_combine(normalize2 if args.normalize else normalize1))))
+	try:
+		# https://docs.python.org/3/library/signal.html#note-on-sigpipe
+		if not args.freq_only: print_expr(nodes)
+		if not args.expr_only: print_freq(nodes, args.freq_value)
+		sys.stdout.flush()
+	except BrokenPipeError:
+		os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+		sys.exit(1)
 
 if __name__ == '__main__':
 	main()

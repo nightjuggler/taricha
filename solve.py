@@ -140,6 +140,11 @@ def normalize2(node, op, v1, v2):
 	node.children = children, inverse_children
 
 def parse_args():
+	def frequency(arg):
+		arg = int(arg)
+		if arg < 1: raise ValueError()
+		return arg
+
 	parser = argparse.ArgumentParser(allow_abbrev=False)
 	parser.add_argument('NUMBERS', type=int, nargs='*', default=[1, 3, 4, 6])
 	parser.add_argument('-a', '--associative', action='store_true', help="Don't discard associative equivalents")
@@ -155,7 +160,7 @@ def parse_args():
 	parser.add_argument('-P', '--pos-only-steps', action='store_true',
 		help="Discard expressions with any non-positive intermediate (or final) values")
 	parser.add_argument('-n', '--normalize', action='store_true', help="Fully normalize expressions")
-	parser.add_argument('-q', '--freq-value', type=int,
+	parser.add_argument('-q', '--freq-value', type=frequency,
 		help="Print only the values that occur with the given frequency")
 	parser.add_argument('-v', '--expr-value', type=Fraction,
 		help="Print only the expressions evaluating to the given value")
@@ -165,30 +170,33 @@ def parse_args():
 
 	if args.divbyzero:
 		args.expr_value = Fraction(1, 0)
-	if args.freq_value is not None:
+	if args.freq_value:
 		args.freq_only = True
 	if args.expr_value is not None:
 		args.expr_only = True
 	return args
 
-def get_filter(args):
+def filter_nodes(args, nodes):
 	filters = []
 	if args.expr_value is not None:
 		expr_value = args.expr_value
 		filters.append(lambda node: node.value == expr_value)
-
-	if args.int_only: filters.append(lambda node: node.value.is_integer())
-	if args.pos_only: filters.append(lambda node: node.value.is_positive())
-
-	if args.int_only_steps: filters.append(lambda node: node.int_steps)
-	if args.pos_only_steps: filters.append(lambda node: node.pos_steps)
-
-	return lambda node: all(f(node) for f in filters)
+	if args.int_only_steps:
+		filters.append(lambda node: node.int_steps)
+	elif args.int_only:
+		filters.append(lambda node: node.value.is_integer())
+	if args.pos_only_steps:
+		filters.append(lambda node: node.pos_steps)
+	elif args.pos_only:
+		filters.append(lambda node: node.value.is_positive())
+	if filters:
+		return [node for node in nodes if all(f(node) for f in filters)]
+	return nodes
 
 def get_nodes(nums, ops, combine):
 	def sortkey(node): return node.id
 	nodes = [[(frozenset([n]), [leaf(Fraction(n))]) for n in nums]]
-	for n in range(1, len(nodes[0])):
+	for n in range(1, len(nums)):
 		m = defaultdict(set)
 		for i in range(n):
 			for nums1, vals1 in nodes[i]:
@@ -213,8 +221,8 @@ def print_freq(nodes, freq_value):
 
 def main():
 	args = parse_args()
-	nodes = list(filter(get_filter(args), get_nodes(args.NUMBERS, get_ops(args),
-		get_combine(normalize2 if args.normalize else normalize1))))
+	nodes = filter_nodes(args, get_nodes(args.NUMBERS, get_ops(args),
+		get_combine((normalize1, normalize2)[args.normalize])))
 	try:
 		# https://docs.python.org/3/library/signal.html#note-on-sigpipe
 		if not args.freq_only: print_expr(nodes)
